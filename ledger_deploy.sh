@@ -1,57 +1,40 @@
 #!/bin/bash
 
+# Clear screen for a clean look
+clear
 echo "------------------------------------------------"
 echo "   VNET SHOP - UNIVERSAL DEPLOYMENT TOOL"
+echo "   Domain: vnet.vpnpremium.shop | Port: 9000"
 echo "------------------------------------------------"
-echo "1. Install/Deploy New System"
-echo "2. Uninstall/Remove Existing System"
-read -p "Choose an option (1 or 2): " MAIN_OPT
+echo "1. Install / Deploy System"
+echo "2. Uninstall / Remove System"
+echo "3. Check System Status"
+echo "4. Exit"
+read -p "Choose an option (1-4): " MAIN_OPT
 
-# --- UNINSTALL LOGIC ---
-if [ "$MAIN_OPT" == "2" ]; then
-    read -p "Enter the Domain to remove: " UN_DOMAIN
-    read -p "Enter the Port to close: " UN_PORT
-    read -p "Enter the Project Folder name in /root/: " UN_FOLDER
+# --- SETTINGS ---
+# We use a static service name to keep it simple for the script to manage
+SERVICE_NAME="vnet_ledger"
 
-    echo "Uninstalling $UN_DOMAIN..."
-    sudo systemctl stop vnet_app
-    sudo systemctl disable vnet_app
-    sudo rm /etc/systemd/system/vnet_app.service
-    sudo systemctl daemon-reload
-
-    sudo rm /etc/nginx/sites-enabled/vnet_app
-    sudo rm /etc/nginx/sites-available/vnet_app
-    sudo systemctl restart nginx
-
-    sudo ufw deny $UN_PORT/tcp
-    sudo ufw reload
-
-    read -p "Do you want to delete the project folder /root/$UN_FOLDER? (y/n): " DEL_FOLD
-    if [ "$DEL_FOLD" == "y" ]; then
-        sudo rm -rf /root/$UN_FOLDER
-    fi
-
-    echo "SUCCESS: $UN_DOMAIN has been removed."
-    exit 1
-fi
-
-# --- INSTALL LOGIC ---
+# --- 1. INSTALL LOGIC ---
 if [ "$MAIN_OPT" == "1" ]; then
     read -p "Enter your domain (e.g., vnet.vpnpremium.shop): " DOMAIN
     read -p "Enter your desired Nginx port (e.g., 9000): " PORT
     read -p "Enter your project folder name in /root/ (e.g., Loans): " FOLDER
 
+    echo "Updating system and installing dependencies..."
+    sudo apt update && sudo apt install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
+
     mkdir -p /root/$FOLDER
     cd /root/$FOLDER
 
-    sudo apt update && sudo apt install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
-
+    echo "Setting up Python Virtual Environment..."
     python3 -m venv venv
     source venv/bin/activate
     pip install flask gunicorn
 
-    # Create Service
-    cat <<EOF | sudo tee /etc/systemd/system/vnet_app.service
+    # Create the Systemd Service
+    cat <<EOF | sudo tee /etc/systemd/system/$SERVICE_NAME.service
 [Unit]
 Description=Gunicorn instance for $FOLDER
 After=network.target
@@ -68,7 +51,7 @@ WantedBy=multi-user.target
 EOF
 
     # Create Nginx Config
-    cat <<EOF | sudo tee /etc/nginx/sites-available/vnet_app
+    cat <<EOF | sudo tee /etc/nginx/sites-available/$SERVICE_NAME
 server {
     listen $PORT ssl;
     server_name $DOMAIN;
@@ -86,20 +69,66 @@ server {
 }
 EOF
 
-    sudo ln -s /etc/nginx/sites-available/vnet_app /etc/nginx/sites-enabled/
+    # Enable everything
+    sudo ln -s /etc/nginx/sites-available/$SERVICE_NAME /etc/nginx/sites-enabled/
     sudo rm -f /etc/nginx/sites-enabled/default
     chmod +x /root
     sudo systemctl daemon-reload
-    sudo systemctl enable vnet_app
+    sudo systemctl enable $SERVICE_NAME
     sudo systemctl enable nginx
     sudo ufw allow $PORT/tcp
     sudo ufw reload
 
-    echo "Running SSL Configuration..."
+    echo "Stopping Nginx to generate SSL..."
     sudo systemctl stop nginx
-    sudo certbot certonly --standalone -d $DOMAIN
+    sudo certbot certonly --standalone -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email
     sudo systemctl start nginx
-    sudo systemctl restart vnet_app
+    
+    # Final check: If app.py exists, start it. If not, warn user.
+    if [ -f "/root/$FOLDER/app.py" ]; then
+        sudo systemctl restart $SERVICE_NAME
+        echo "SUCCESS: System is live at https://$DOMAIN:$PORT"
+    else
+        echo "WARNING: System installed, but app.py was not found in /root/$FOLDER."
+        echo "Please upload your code, then run: sudo systemctl restart $SERVICE_NAME"
+    fi
 
-    echo "DEPLOYMENT FINISHED! Access at https://$DOMAIN:$PORT"
+# --- 2. UNINSTALL LOGIC ---
+elif [ "$MAIN_OPT" == "2" ]; then
+    read -p "Enter the Port to close: " UN_PORT
+    read -p "Enter the Folder name to check for deletion: " UN_FOLDER
+
+    echo "Cleaning up system files..."
+    sudo systemctl stop $SERVICE_NAME
+    sudo systemctl disable $SERVICE_NAME
+    sudo rm -f /etc/systemd/system/$SERVICE_NAME.service
+    sudo systemctl daemon-reload
+
+    sudo rm -f /etc/nginx/sites-enabled/$SERVICE_NAME
+    sudo rm -f /etc/nginx/sites-available/$SERVICE_NAME
+    sudo systemctl restart nginx
+
+    sudo ufw deny $UN_PORT/tcp
+    sudo ufw reload
+
+    read -p "Delete all code and databases in /root/$UN_FOLDER? (y/n): " DEL_FOLD
+    if [ "$DEL_FOLD" == "y" ]; then
+        sudo rm -rf /root/$UN_FOLDER
+    fi
+    echo "Uninstall complete."
+
+# --- 3. STATUS CHECK ---
+elif [ "$MAIN_OPT" == "3" ]; then
+    echo "Checking service status..."
+    sudo systemctl status $SERVICE_NAME --no-pager
+    echo "------------------------------------------------"
+    echo "Checking Nginx status..."
+    sudo systemctl status nginx --no-pager
+    echo "------------------------------------------------"
+    echo "Active Ports:"
+    sudo ufw status | grep ALLOW
+
+else
+    echo "Exiting..."
+    exit 1
 fi
