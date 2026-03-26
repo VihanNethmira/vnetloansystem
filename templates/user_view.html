@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statement - {{ username }}</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #eaeff2; padding: 10px; margin: 0; }
+        .container { max-width: 900px; margin: auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+        .header { background: #1e293b; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .balance-val { font-size: 1.3rem; font-weight: bold; display: block; }
+        .ledger-wrapper { display: flex; border-top: 1px solid #dee2e6; background: #fff; }
+        .ledger-col { flex: 1; min-width: 0; }
+        .credit-side { border-right: 1px solid #dee2e6; background: #fffcfc; }
+        .debit-side { background: #fcfdfc; }
+        .side-title { background: #f8fafc; padding: 8px; text-align: center; font-size: 0.75rem; font-weight: 700; color: #475569; border-bottom: 1px solid #dee2e6; text-transform: uppercase; }
+        .entry-row { display: flex; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; align-items: center; }
+        .entry-info { display: flex; flex-direction: column; }
+        .entry-date { font-size: 0.65rem; color: #94a3b8; font-weight: 600; }
+        .entry-desc { color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
+        .amt-credit { color: #dc2626; font-weight: bold; }
+        .amt-debit { color: #16a34a; font-weight: bold; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div><small style="opacity:0.7">ACCOUNT</small><h2>{{ username }}</h2></div>
+        <div style="text-align:right"><small>Total amount to be given</small>
+            <span class="balance-val">Rs. {{ balance * -1 }}</span>
+        </div>
+    </div>
+    <div class="ledger-wrapper">
+        <div class="ledger-col credit-side">
+            <div class="side-title">Usage (Credit)</div>
+            {% for row in rows if row[6] == 'give' %}
+            <div class="entry-row">
+                <div class="entry-info"><span class="entry-date">{{ row[3] }}</span><span class="entry-desc">{{ row[4] }}</span></div>
+                <span class="amt-credit">{{ row[5] }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="ledger-col debit-side">
+            <div class="side-title">Payments (Debit)</div>
+            {% for row in rows if row[6] == 'take' %}
+            <div class="entry-row">
+                <div class="entry-info"><span class="entry-date">{{ row[3] }}</span><span class="entry-desc">{{ row[4] }}</span></div>
+                <span class="amt-debit">{{ row[5] }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+</body>
+</html>
